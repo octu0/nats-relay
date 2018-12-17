@@ -4,6 +4,8 @@ Simple [NATS](https://nats.io/) relay(replication) server.
 
 Relay(replicate) one or any Topics in NATS server to another NATS server.
 
+![nats-relay](https://user-images.githubusercontent.com/42143893/50095373-c3fc9a00-0258-11e9-9174-74775dfe9d5d.png)
+
 ## Configuration
 
 Configuration is done using a YAML file:
