@@ -6,6 +6,7 @@ import(
   "os"
   "time"
 
+  "github.com/comail/colog"
   "github.com/lestrrat-go/file-rotatelogs"
 )
 
@@ -41,14 +42,28 @@ func NewGeneralLogger(config Config) *GeneralLogger {
   }
 
   multi := new(MultiLogger)
-  multi.std = os.Stdout
-  multi.sub = rotate
+  multi.std = rotate
+  multi.sub = os.Stdout
+
+  c := colog.NewCoLog(multi, "nrelay ", log.Ldate | log.Ltime | log.Lshortfile)
+  c.SetDefaultLevel(colog.LDebug)
+  c.SetMinLevel(colog.LInfo)
+  if config.DebugMode {
+    c.SetMinLevel(colog.LDebug)
+    if config.VerboseMode {
+      c.SetMinLevel(colog.LTrace)
+    }
+  }
 
   l   := new(GeneralLogger)
   l.m  = multi
   l.r  = rotate
+  l.cl = c.NewLogger()
   return l
 }
 func (l *GeneralLogger) Write(p []byte) (int, error) {
   return l.m.Write(p)
+}
+func (l *GeneralLogger) Logger() *log.Logger {
+  return l.cl
 }

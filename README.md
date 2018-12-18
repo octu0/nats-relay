@@ -52,17 +52,17 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.0.0
+   1.1.0
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --relay-yaml value, -c value  relay configuration yaml file path (default: "./relay.yaml") [$WSRELAY_RELAY_YAML]
-   --log-dir value               /path/to/log directory (default: "/tmp") [$WSRELAY_LOG_DIR]
-   --procs value, -P value       attach cpu(s) (default: 8) [$WSRELAY_PROCS]
-   --debug, -d                   debug mode [$WSRELAY_DEBUG]
-   --verbose, -V                 verbose. more message [$WSRELAY_VERBOSE]
+   --relay-yaml value, -c value  relay configuration yaml file path (default: "./relay.yaml") [$NRELAY_RELAY_YAML]
+   --log-dir value               /path/to/log directory (default: "/tmp") [$NRELAY_LOG_DIR]
+   --procs value, -P value       attach cpu(s) (default: 8) [$NRELAY_PROCS]
+   --debug, -d                   debug mode [$NRELAY_DEBUG]
+   --verbose, -V                 verbose. more message [$NRELAY_VERBOSE]
    --help, -h                    show help
    --version, -v                 print the version
 ```

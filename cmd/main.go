@@ -61,7 +61,7 @@ func action(c *cli.Context) error {
   ctx := context.Background()
   ctx  = context.WithValue(ctx, "config", config)
   ctx  = context.WithValue(ctx, "logger.general", gene)
-  ctx  = context.WithValue(ctx, "relay-config", relayConfig)
+  ctx  = context.WithValue(ctx, "relay.config", relayConfig)
 
   relayServer := nrelay.NewRelayServer(ctx)
   error_chan  := make(chan error, 0)
@@ -136,29 +136,29 @@ func main(){
       Name: "relay-yaml, c",
       Usage: "relay configuration yaml file path",
       Value: "./relay.yaml",
-      EnvVar: "WSRELAY_RELAY_YAML",
+      EnvVar: "NRELAY_RELAY_YAML",
     },
     cli.StringFlag{
       Name: "log-dir",
       Usage: "/path/to/log directory",
       Value: nrelay.DEFAULT_LOG_DIR,
-      EnvVar: "WSRELAY_LOG_DIR",
+      EnvVar: "NRELAY_LOG_DIR",
     },
     cli.IntFlag{
       Name: "procs, P",
       Usage: "attach cpu(s)",
       Value: runtime.NumCPU(),
-      EnvVar: "WSRELAY_PROCS",
+      EnvVar: "NRELAY_PROCS",
     },
     cli.BoolFlag{
       Name: "debug, d",
       Usage: "debug mode",
-      EnvVar: "WSRELAY_DEBUG",
+      EnvVar: "NRELAY_DEBUG",
     },
     cli.BoolFlag{
       Name: "verbose, V",
       Usage: "verbose. more message",
-      EnvVar: "WSRELAY_VERBOSE",
+      EnvVar: "NRELAY_VERBOSE",
     },
   }
   if err := app.Run(os.Args); err != nil {
