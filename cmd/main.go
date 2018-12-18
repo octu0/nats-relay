@@ -8,6 +8,7 @@ import(
   "os/signal"
   "syscall"
   "io/ioutil"
+  "time"
 
   "github.com/comail/colog"
   "gopkg.in/urfave/cli.v1"
@@ -62,7 +63,26 @@ func action(c *cli.Context) error {
   ctx  = context.WithValue(ctx, "logger.general", gene)
   ctx  = context.WithValue(ctx, "relay-config", relayConfig)
 
+  relayServer := nrelay.NewRelayServer(ctx)
   error_chan  := make(chan error, 0)
+  stopService := func() error {
+    sctx, cancel := context.WithTimeout(ctx, 10 * time.Second);
+    defer cancel()
+
+    if err := relayServer.Stop(sctx); err != nil {
+      log.Printf("error: %s", err.Error())
+      return err
+    }
+
+    return nil
+  }
+
+  go func(){
+    if err := relayServer.Start(context.TODO()); err != nil {
+      error_chan <- err
+    }
+  }()
+
   signal_chan := make(chan os.Signal, 10)
   signal.Notify(signal_chan, syscall.SIGTERM)
   signal.Notify(signal_chan, syscall.SIGHUP)
@@ -75,9 +95,15 @@ func action(c *cli.Context) error {
     case err := <-error_chan:
       log.Printf("error: error has occurred: %s", err.Error())
       lastErr = err
+      if e := stopService(); e != nil {
+        lastErr = e
+      }
       running = false
     case sig := <-signal_chan:
       log.Printf("info: signal trap(%s)", sig.String())
+      if err := stopService(); err != nil {
+        lastErr = err
+      }
       running = false
     }
   }
