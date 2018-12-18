@@ -1,0 +1,10 @@
+primary: "nats://127.0.0.1:4220/"
+secondary: "nats://127.0.0.1:4221/"
+nats: "nats://127.0.0.1:4222/"
+topic:
+  "foo.>":
+    worker: 2
+  "bar.*":
+    worker: 2
+  "baz.quux":
+    worker: 2
