@@ -58,7 +58,11 @@ COMMANDS:
      help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --relay-yaml -c          relay.yaml
-   --help, -h               show help
-   --version, -v            print the version
+   --relay-yaml value, -c value  relay configuration yaml file path (default: "./relay.yaml") [$WSRELAY_RELAY_YAML]
+   --log-dir value               /path/to/log directory (default: "/tmp") [$WSRELAY_LOG_DIR]
+   --procs value, -P value       attach cpu(s) (default: 8) [$WSRELAY_PROCS]
+   --debug, -d                   debug mode [$WSRELAY_DEBUG]
+   --verbose, -V                 verbose. more message [$WSRELAY_VERBOSE]
+   --help, -h                    show help
+   --version, -v                 print the version
 ```
