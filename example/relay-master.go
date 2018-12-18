@@ -38,7 +38,7 @@ func main(){
   nc, err := nats.Connect(
     natsUrl,
     nats.NoEcho(),
-    nats.Name("dest"),
+    nats.Name("relay-master"),
   )
   if err != nil {
     log.Printf("error: client conn %s", err.Error())
