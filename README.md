@@ -1,6 +1,6 @@
 # nats-relay
 
-Simple [NATS](https://nats.io/) relay(replication) server.
+Simple low-latency [NATS](https://nats.io/) relay(replication) server.
 
 Relay(replicate) one or any Topics in NATS server to another NATS server.
 
@@ -17,11 +17,15 @@ nats: "nats://localhost:4222/"
 topic:
   "foo.>":
     worker: 2
-  "bar.>":
+  "bar.*":
+    worker: 2
+  "baz.quux":
     worker: 2
 ```
 
 Specifiable wildcard('>' or '*') topicss are available
+
+see more [examples](https://github.com/octu0/nats-relay/tree/master/cmd)
 
 ## Build
 
