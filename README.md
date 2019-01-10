@@ -25,7 +25,7 @@ topic:
 
 Specifiable wildcard('>' or '*') topicss are available
 
-see more [examples](https://github.com/octu0/nats-relay/tree/master/cmd)
+see more [examples](https://github.com/octu0/nats-relay/tree/master/example)
 
 ## Build
 
