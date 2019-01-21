@@ -57,19 +57,23 @@ func (r *RelayServer) Start(sctx context.Context) error {
     r.logger.Printf("error: primary(%s) connection failure", r.conf.PrimaryUrl)
     return perr
   }
-  snc, serr := nats.Connect(r.conf.SecondaryUrl, r.opts...)
-  if serr != nil {
-    r.logger.Printf("error: secondary(%s) connection failure", r.conf.SecondaryUrl)
-    return serr
+  r.priConn = pnc
+
+  if 0 < len(r.conf.SecondaryUrl) {
+    // secondary nats are optional
+    snc, serr := nats.Connect(r.conf.SecondaryUrl, r.opts...)
+    if serr != nil {
+      r.logger.Printf("error: secondary(%s) connection failure", r.conf.SecondaryUrl)
+      return serr
+    }
+    r.secConn = snc
   }
+
   nnc, nerr := nats.Connect(r.conf.NatsUrl, r.opts...)
   if nerr != nil {
     r.logger.Printf("error: nats(%s) connection failure", r.conf.NatsUrl)
     return nerr
   }
-
-  r.priConn = pnc
-  r.secConn = snc
   r.nsConn  = nnc
 
   if err := r.SubscribeTopics(r.priConn); err != nil {
@@ -77,10 +81,13 @@ func (r *RelayServer) Start(sctx context.Context) error {
     r.Close()
     return err
   }
-  if err := r.SubscribeTopics(r.secConn); err != nil {
-    r.logger.Printf("error: secondary subscription failure")
-    r.Close()
-    return err
+
+  if r.secConn != nil {
+    if err := r.SubscribeTopics(r.secConn); err != nil {
+      r.logger.Printf("error: secondary subscription failure")
+      r.Close()
+      return err
+    }
   }
 
   return nil
