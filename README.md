@@ -27,6 +27,44 @@ Specifiable wildcard('>' or '*') topicss are available
 
 see more [examples](https://github.com/octu0/nats-relay/tree/master/example)
 
+## Customize
+
+### logger
+
+need to implement [log.Logger](https://golang.org/pkg/log/#Logger)
+
+```
+type MyLogger struct { ... }
+func (l *MyLogger) Fatalf(string, v ...interface{}) { ... }
+:
+func (l *MyLogger) Printf(string, v ...interface{}) { ... }
+
+ctx  = context.WithValue(ctx, "relay.logger", new(MyLogger))
+```
+
+### nats.Option
+
+set []nats.Option to context
+
+```
+// []nats.Option
+ctx := context.WithValue(ctx, "relay.nats-options", []nats.Option{
+  nats.PingInterval(800 * time.Millisecond),
+  nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error){
+    if err == nats.ErrSlowConsumer {
+      pendingMsgs, _, e := sub.Pending()
+      if e != nil {
+        log.Printf("warn: does not get pending messages: %v", e)
+        return
+      }
+      log.Printf("warn: falling behind with %d pending messages on subject %s", pendingMsgs, sub.Subject)
+    } else {
+      log.Printf("error: %v", err)
+    }
+  }),
+})
+```
+
 ## Build
 
 Build requires Go version 1.11+ installed.

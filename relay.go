@@ -24,6 +24,11 @@ func NewRelayServer(ctx context.Context) *RelayServer {
     nats.NoEcho(),
     nats.Name(UA),
   }
+  opts := ctx.Value("relay.nats-options")
+  if opts != nil {
+    r.opts = append(r.opts, opts.([]nats.Option)...)
+  }
+
   r.conf = ctx.Value("relay.config").(RelayConfig)
 
   var errorHandler nats.ErrHandler
@@ -148,6 +153,8 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn) error {
       sp = append(sp, subpub)
     }
   }
+  src.Flush()
+
   r.subpubs = sp
   if lastErr != nil {
     r.Close()
