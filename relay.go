@@ -153,6 +153,8 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn) error {
       sp = append(sp, subpub)
     }
   }
+  src.Flush()
+
   r.subpubs = sp
   if lastErr != nil {
     r.Close()
