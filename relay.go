@@ -3,7 +3,6 @@ package nrelay
 import (
   "log"
   "context"
-  "strings"
 
   "github.com/nats-io/go-nats"
 )
@@ -81,14 +80,14 @@ func (r *RelayServer) Start(sctx context.Context) error {
   }
   r.nsConn  = nnc
 
-  if err := r.SubscribeTopics(r.priConn); err != nil {
+  if err := r.SubscribeTopics(r.priConn, "primary"); err != nil {
     r.logger.Printf("error: primary subscription failure")
     r.Close()
     return err
   }
 
   if r.secConn != nil {
-    if err := r.SubscribeTopics(r.secConn); err != nil {
+    if err := r.SubscribeTopics(r.secConn, "secondary"); err != nil {
       r.logger.Printf("error: secondary subscription failure")
       r.Close()
       return err
@@ -135,22 +134,25 @@ func (r *RelayServer) Close() error {
   return nil
 }
 
-func (r *RelayServer) SubscribeTopics(src *nats.Conn) error {
+func (r *RelayServer) SubscribeTopics(src *nats.Conn, connType string) error {
   var lastErr error
   sp := make([]*Subpub, 0)
   for topic, clientConf := range r.conf.Topics {
     group  := r.makeGroupName(topic)
     numWorker := clientConf.WorkerNum
 
+    // single instance subs many goroutines
+    subpub := NewSubpub(connType, src, r.nsConn, r.logger)
     for i := 0; i < numWorker; i = i + 1 {
-      // new conn?
-      subpub := NewSubpub(src, r.nsConn, r.logger)
       if err := subpub.Subscribe(topic, group); err != nil {
         r.logger.Printf("error: subpub subscribe failure: %s", err.Error())
         lastErr = err
       }
+    }
+    sp = append(sp, subpub)
 
-      sp = append(sp, subpub)
+    if lastErr == nil {
+      log.Printf("info: subscribing %s to %d deque worker", topic, numWorker)
     }
   }
   src.Flush()
@@ -162,5 +164,5 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn) error {
   return lastErr
 }
 func (r *RelayServer) makeGroupName(topic string) string {
-  return strings.Join([]string{topic, "group"}, "/")
+  return "group"
 }
