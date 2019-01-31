@@ -3,7 +3,6 @@ package nrelay
 import (
   "log"
   "context"
-  "strings"
 
   "github.com/nats-io/go-nats"
 )
@@ -162,5 +161,5 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn) error {
   return lastErr
 }
 func (r *RelayServer) makeGroupName(topic string) string {
-  return strings.Join([]string{topic, "group"}, "/")
+  return "group"
 }
