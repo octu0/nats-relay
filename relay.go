@@ -3,8 +3,10 @@ package nrelay
 import (
   "log"
   "context"
+  "strings"
 
   "github.com/nats-io/go-nats"
+  "github.com/rs/xid"
 )
 
 type RelayServer struct {
@@ -138,7 +140,8 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn, connType string) error {
   var lastErr error
   sp := make([]*Subpub, 0)
   for topic, clientConf := range r.conf.Topics {
-    group  := r.makeGroupName(topic)
+    guid   := xid.New()
+    group  := r.makeGroupName(topic, guid)
     numWorker := clientConf.WorkerNum
 
     // single instance subs many goroutines
@@ -163,6 +166,6 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn, connType string) error {
   }
   return lastErr
 }
-func (r *RelayServer) makeGroupName(topic string) string {
-  return "group"
+func (r *RelayServer) makeGroupName(topic string, guid xid.ID) string {
+  return strings.Join([]string{"group", guid.String()}, "-")
 }
