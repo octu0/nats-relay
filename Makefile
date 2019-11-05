@@ -9,8 +9,8 @@ _GOARCH    = amd64
 
 deps:
 	go get github.com/comail/colog
-	go get github.com/nats-io/gnatsd/server
-	go get github.com/nats-io/go-nats
+	go get github.com/nats-io/nats-server/server
+	go get github.com/nats-io/nats.go/
 	go get github.com/lestrrat-go/file-rotatelogs
 	go get github.com/rs/xid
 	go get gopkg.in/urfave/cli.v1
