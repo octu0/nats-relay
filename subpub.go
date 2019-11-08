@@ -7,7 +7,8 @@ import(
   "github.com/nats-io/nats.go"
 )
 
-type MsgQueue chan *nats.Msg
+type SubpubDone chan struct{}
+type MsgQueue   chan *nats.Msg
 type Subpub struct {
   srcConn    *nats.Conn
   dstConn    *nats.Conn
@@ -16,10 +17,10 @@ type Subpub struct {
   sub        *nats.Subscription
   connType   string
   topic      string
-  running    bool
+  dones      []SubpubDone
 }
 func NewSubpub(connType string, src, dst *nats.Conn, logger *log.Logger) *Subpub {
-  subpub := new(Subpub)
+  subpub         := new(Subpub)
   subpub.srcConn  = src
   subpub.dstConn  = dst
   subpub.msgChan  = make(MsgQueue, 0)
@@ -27,22 +28,29 @@ func NewSubpub(connType string, src, dst *nats.Conn, logger *log.Logger) *Subpub
   subpub.logger   = logger
   return subpub
 }
-func (s *Subpub) Subscribe(topic, group string) error {
+func (s *Subpub) Subscribe(topic, group string, numWorker int) error {
   sub, err := s.srcConn.ChanQueueSubscribe(topic, group, s.msgChan)
   if err != nil {
     s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
     return err
   }
   s.srcConn.Flush()
-  s.sub = sub
-  s.topic = topic
-  s.running = true
-  go s.exchangeLoop()
+  s.sub     = sub
+  s.topic   = topic
+  s.dones   = make([]SubpubDone, numWorker)
+  for i := 0; i < numWorker; i += 1 {
+    s.dones[i] = make(SubpubDone)
+  }
+  for i := 0; i < numWorker; i += 1 {
+    go s.exchangeLoop(s.dones[i])
+  }
   return nil
 }
-func (s *Subpub) exchangeLoop() {
-  for s.running {
+func (s *Subpub) exchangeLoop(done SubpubDone) {
+  for {
     select {
+    case <-done:
+      return
     case msg, ok := <-s.msgChan:
       if ok != true {
         return
@@ -57,7 +65,9 @@ func (s *Subpub) Close() error {
   if err := s.sub.Unsubscribe(); err != nil {
     return err
   }
-  s.running = false
+  for _, done := range s.dones {
+    done <- struct{}{}
+  }
   close(s.msgChan)
 
   return nil
