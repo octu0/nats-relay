@@ -2,73 +2,62 @@ package nrelay
 
 import(
   "log"
+  "sync"
   "strings"
 
   "github.com/nats-io/nats.go"
 )
 
-type SubpubDone chan struct{}
-type MsgQueue   chan *nats.Msg
 type Subpub struct {
+  mutex      *sync.Mutex
   srcConn    *nats.Conn
   dstConn    *nats.Conn
-  msgChan    MsgQueue
   logger     *log.Logger
-  sub        *nats.Subscription
+  subs       []*nats.Subscription
   connType   string
   topic      string
-  dones      []SubpubDone
 }
 func NewSubpub(connType string, src, dst *nats.Conn, logger *log.Logger) *Subpub {
-  subpub         := new(Subpub)
-  subpub.srcConn  = src
-  subpub.dstConn  = dst
-  subpub.msgChan  = make(MsgQueue, 0)
-  subpub.connType = connType
-  subpub.logger   = logger
-  return subpub
+  s         := new(Subpub)
+  s.mutex    = new(sync.Mutex)
+  s.srcConn  = src
+  s.dstConn  = dst
+  s.connType = connType
+  s.logger   = logger
+  return s
+}
+func (s *Subpub) pub(msg *nats.Msg) {
+  s.dstConn.Publish(msg.Subject, msg.Data)
 }
 func (s *Subpub) Subscribe(topic, group string, numWorker int) error {
-  sub, err := s.srcConn.ChanQueueSubscribe(topic, group, s.msgChan)
-  if err != nil {
-    s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
-    return err
+  s.mutex.Lock()
+  defer s.mutex.Unlock()
+
+  subs := make([]*nats.Subscription, numWorker)
+  for i := 0; i < numWorker; i += 1 {
+    sub, err := s.srcConn.QueueSubscribe(topic, group, s.pub)
+    if err != nil {
+      s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
+      return err
+    }
+    subs[i] = sub
   }
   s.srcConn.Flush()
-  s.sub     = sub
+
+  s.subs    = subs
   s.topic   = topic
-  s.dones   = make([]SubpubDone, numWorker)
-  for i := 0; i < numWorker; i += 1 {
-    s.dones[i] = make(SubpubDone)
-  }
-  for i := 0; i < numWorker; i += 1 {
-    go s.exchangeLoop(s.dones[i])
-  }
   return nil
 }
-func (s *Subpub) exchangeLoop(done SubpubDone) {
-  for {
-    select {
-    case <-done:
-      return
-    case msg, ok := <-s.msgChan:
-      if ok != true {
-        return
-      }
+func (s *Subpub) Close() error {
+  s.mutex.Lock()
+  defer s.mutex.Unlock()
 
-      // ignore reply
-      s.dstConn.Publish(msg.Subject, msg.Data)
+  for _, sub := range s.subs {
+    if err := sub.Unsubscribe(); err != nil {
+      return err
     }
   }
-}
-func (s *Subpub) Close() error {
-  if err := s.sub.Unsubscribe(); err != nil {
-    return err
-  }
-  for _, done := range s.dones {
-    done <- struct{}{}
-  }
-  close(s.msgChan)
+  s.srcConn.Drain()
 
   return nil
 }
