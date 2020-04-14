@@ -4,15 +4,16 @@ import (
   "log"
   "context"
   "strings"
+  "sync"
 
   "github.com/nats-io/nats.go"
   "github.com/rs/xid"
 )
 
 type RelayServer struct {
+  mutex     *sync.Mutex
   priConn   *nats.Conn
   secConn   *nats.Conn
-  nsConn    *nats.Conn
   opts      []nats.Option
   conf      RelayConfig
   subpubs   []*Subpub
@@ -21,10 +22,12 @@ type RelayServer struct {
 
 func NewRelayServer(ctx context.Context) *RelayServer {
   r := new(RelayServer)
-  r.opts = []nats.Option{
+  r.mutex = new(sync.Mutex)
+  r.opts  = []nats.Option{
     nats.NoEcho(),
     nats.Name(UA),
   }
+
   opts := ctx.Value("relay.nats-options")
   if opts != nil {
     r.opts = append(r.opts, opts.([]nats.Option)...)
@@ -40,7 +43,7 @@ func NewRelayServer(ctx context.Context) *RelayServer {
   } else {
     errorHandler = r.ErrorHandler
   }
-  r.opts   = append(r.opts, nats.ErrorHandler(errorHandler))
+  r.opts = append(r.opts, nats.ErrorHandler(errorHandler))
 
   var ctxLogger interface{}
   ctxLogger = ctx.Value("relay.logger")
@@ -56,6 +59,9 @@ func (r *RelayServer) ErrorHandler(nc *nats.Conn, sub *nats.Subscription, err er
   r.logger.Printf("error: %s", err.Error())
 }
 func (r *RelayServer) Start(sctx context.Context) error {
+  r.mutex.Lock()
+  defer r.mutex.Unlock()
+
   r.logger.Printf("info: relay server starting")
 
   pnc, perr := nats.Connect(r.conf.PrimaryUrl, r.opts...)
@@ -75,78 +81,83 @@ func (r *RelayServer) Start(sctx context.Context) error {
     r.secConn = snc
   }
 
-  nnc, nerr := nats.Connect(r.conf.NatsUrl, r.opts...)
-  if nerr != nil {
-    r.logger.Printf("error: nats(%s) connection failure", r.conf.NatsUrl)
-    return nerr
-  }
-  r.nsConn  = nnc
-
-  if err := r.SubscribeTopics(r.priConn, "primary"); err != nil {
+  if err := r.subscribeTopics(r.priConn, "primary"); err != nil {
     r.logger.Printf("error: primary subscription failure")
-    r.Close()
+    r.closeAll()
     return err
   }
 
   if r.secConn != nil {
-    if err := r.SubscribeTopics(r.secConn, "secondary"); err != nil {
+    if err := r.subscribeTopics(r.secConn, "secondary"); err != nil {
       r.logger.Printf("error: secondary subscription failure")
-      r.Close()
+      r.closeAll()
       return err
     }
   }
 
+  r.logger.Printf("info: relay server stared")
   return nil
 }
 func (r *RelayServer) Stop(sctx context.Context) error {
+  r.mutex.Lock()
+  defer r.mutex.Unlock()
   r.logger.Printf("info: relay server stoping")
+
+  if err := r.closeAll(); err != nil {
+    return err
+  }
+
+  r.logger.Printf("info: relay server stoped")
   return nil
 }
-func (r *RelayServer) Close() error {
+func (r *RelayServer) closeAll() error {
+  r.logger.Printf("debug: relay subpub close")
   for _, subpub := range r.subpubs {
     subpub.Close()
   }
 
+  r.logger.Printf("debug: relay secondary conn close")
   if r.secConn != nil {
+    defer r.secConn.Close()
     // secondary disconn
     if err := r.secConn.Drain(); err != nil {
       return err
     }
-    r.secConn.Close()
-    r.secConn = nil
   }
 
+  r.logger.Printf("debug: relay primary conn close")
   if r.priConn != nil {
+    defer r.priConn.Close()
     // primary disconn
     if err := r.priConn.Drain(); err != nil {
       return err
     }
-    r.priConn.Close()
-    r.priConn = nil
   }
 
-  if r.nsConn != nil {
-    // todo: check buffered len before flush
-    if err := r.nsConn.Flush(); err != nil {
-      return err
-    }
-    r.nsConn.Close()
-    r.nsConn = nil
-  }
   return nil
 }
+func (r *RelayServer) Close() error {
+  r.mutex.Lock()
+  defer r.mutex.Unlock()
 
-func (r *RelayServer) SubscribeTopics(src *nats.Conn, connType string) error {
+  return r.closeAll()
+}
+func (r *RelayServer) createRelayConn(id int) (*nats.Conn, error) {
+  return nats.Connect(r.conf.NatsUrl, r.opts...)
+}
+func (r *RelayServer) subscribeTopics(src *nats.Conn, connType string) error {
   var lastErr error
-  sp := make([]*Subpub, 0)
+  sp := make([]*Subpub, 0, len(r.conf.Topics))
   for topic, clientConf := range r.conf.Topics {
-    guid      := xid.New()
-    group     := r.makeGroupName(topic, guid)
-    numWorker := clientConf.WorkerNum
+    guid       := xid.New()
+    group      := r.makeGroupName(topic, guid)
+    numWorker  := clientConf.WorkerNum
+    numShard   := clientConf.ShardNum
+    prefixSize := clientConf.PrefixSize
 
     // single instance subs many goroutines
-    subpub := NewSubpub(connType, src, r.nsConn, r.logger)
-    if err := subpub.Subscribe(topic, group, numWorker); err != nil {
+    subpub := NewSubpub(connType, src, r.logger, r.createRelayConn)
+    if err := subpub.Subscribe(topic, group, numWorker, numShard, prefixSize); err != nil {
       r.logger.Printf("error: subpub subscribe failure: %s", err.Error())
       lastErr = err
     }
@@ -160,7 +171,7 @@ func (r *RelayServer) SubscribeTopics(src *nats.Conn, connType string) error {
 
   r.subpubs = sp
   if lastErr != nil {
-    r.Close()
+    r.closeAll()
   }
   return lastErr
 }

@@ -29,4 +29,6 @@ type RelayConfig struct {
 
 type RelayClientConfig struct {
   WorkerNum      int    `yaml:"worker"`
+  ShardNum       int    `yaml:"shard"`
+  PrefixSize     int    `yaml:"prefix"`
 }

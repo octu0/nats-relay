@@ -15,6 +15,7 @@ deps:
 	go get github.com/rs/xid
 	go get gopkg.in/urfave/cli.v1
 	go get gopkg.in/yaml.v2
+	go get github.com/lafikl/consistent
 
 build:
 	go generate
