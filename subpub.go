@@ -38,7 +38,7 @@ func NewSubpub(connType string, src *nats.Conn, logger *log.Logger, factory Conn
   s.dstMap   = new(sync.Map)
   return s
 }
-func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int) nats.MsgHandler {
+func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBalance bool) nats.MsgHandler {
   if prefixSize < 1 {
     prefixSize = 0
   }
@@ -58,14 +58,16 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int) nats.MsgHan
       return
     }
 
-    s.sharding.Inc(sid)
-    defer s.sharding.Done(sid)
+    if useLoadBalance {
+      s.sharding.Inc(sid)
+      defer s.sharding.Done(sid)
+    }
 
     dst := val.(*nats.Conn)
     dst.Publish(msg.Subject, msg.Data)
   }
 }
-func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixSize int) error {
+func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixSize int, useLoadBalance bool) error {
   s.mutex.Lock()
   defer s.mutex.Unlock()
 
@@ -97,7 +99,8 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
 
   subs := make([]*nats.Subscription, numWorker)
   for i := 0; i < numWorker; i += 1 {
-    sub, err := s.srcConn.QueueSubscribe(topic, group, s.makeDispatcher(fallbackConn, prefixSize))
+    d := s.makeDispatcher(fallbackConn, prefixSize, useLoadBalance)
+    sub, err := s.srcConn.QueueSubscribe(topic, group, d)
     if err != nil {
       s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
       return err

@@ -149,15 +149,16 @@ func (r *RelayServer) subscribeTopics(src *nats.Conn, connType string) error {
   var lastErr error
   sp := make([]*Subpub, 0, len(r.conf.Topics))
   for topic, clientConf := range r.conf.Topics {
-    guid       := xid.New()
-    group      := r.makeGroupName(topic, guid)
-    numWorker  := clientConf.WorkerNum
-    numShard   := clientConf.ShardNum
-    prefixSize := clientConf.PrefixSize
+    guid           := xid.New()
+    group          := r.makeGroupName(topic, guid)
+    numWorker      := clientConf.WorkerNum
+    numShard       := clientConf.ShardNum
+    prefixSize     := clientConf.PrefixSize
+    useLoadBalance := clientConf.UseLoadBalance
 
     // single instance subs many goroutines
     subpub := NewSubpub(connType, src, r.logger, r.createRelayConn)
-    if err := subpub.Subscribe(topic, group, numWorker, numShard, prefixSize); err != nil {
+    if err := subpub.Subscribe(topic, group, numWorker, numShard, prefixSize, useLoadBalance); err != nil {
       r.logger.Printf("error: subpub subscribe failure: %s", err.Error())
       lastErr = err
     }
