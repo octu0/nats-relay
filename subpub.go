@@ -50,7 +50,7 @@ func (w *PubWorker) start() {
   go w.runPubLoop()
 }
 func (w *PubWorker) runPubLoop() {
-  defer w.logger.Printf("debug: %d publoop done", w.id)
+  defer w.logger.Printf("debug: %s publoop done", w.id)
 
   for {
     select {
