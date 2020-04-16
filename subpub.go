@@ -12,6 +12,57 @@ import(
 
 type ConnFactory func(id int) (*nats.Conn, error)
 
+type Pub struct {
+  subject   string
+  data      []byte
+}
+type PubQueue    chan *Pub
+type DonePubLoop chan struct{}
+type PubWorker struct {
+  id     string
+  conn   *nats.Conn
+  logger *log.Logger
+  queue  PubQueue
+  done   DonePubLoop
+}
+func newPubWorker(id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
+  w       := new(PubWorker)
+  w.id     = id
+  w.conn   = dst
+  w.logger = logger
+  w.queue  = make(PubQueue, 0)
+  w.done   = make(DonePubLoop)
+  return w
+}
+func (w *PubWorker) publish(subject string, data []byte) {
+  w.queue <-&Pub{subject, data}
+}
+func (w *PubWorker) stop() {
+  w.done <-struct{}{}
+  close(w.done)
+
+  if err := w.conn.Drain(); err != nil {
+    w.logger.Printf("warn: close drain error: %s", err.Error())
+  }
+  w.conn.Close()
+}
+func (w *PubWorker) start() {
+  go w.runPubLoop()
+}
+func (w *PubWorker) runPubLoop() {
+  defer w.logger.Printf("debug: %d publoop done", w.id)
+
+  for {
+    select {
+    case <-w.done:
+      return
+
+    case d := <-w.queue:
+      w.conn.Publish(d.subject, d.data)
+    }
+  }
+}
+
 type Subpub struct {
   mutex      *sync.Mutex
   srcConn    *nats.Conn
@@ -63,8 +114,8 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
       defer s.sharding.Done(sid)
     }
 
-    dst := val.(*nats.Conn)
-    dst.Publish(msg.Subject, msg.Data)
+    worker := val.(*PubWorker)
+    worker.publish(msg.Subject, msg.Data)
   }
 }
 func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixSize int, useLoadBalance bool) error {
@@ -83,9 +134,12 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
       return err
     }
 
-    sid := xid.New().String()
+    sid    := xid.New().String()
+    worker := newPubWorker(sid, dst, s.logger)
+    worker.start()
+
     s.sharding.Add(sid)
-    s.dstMap.Store(sid, dst)
+    s.dstMap.Store(sid, worker)
     sids = append(sids, sid)
   }
   s.sids = sids
@@ -127,11 +181,8 @@ func (s *Subpub) Close() error {
   if 0 < len(s.sids) {
     for _, sid := range s.sids {
       if val, ok := s.dstMap.Load(sid); ok {
-        conn := val.(*nats.Conn)
-        if err := conn.Drain(); err != nil {
-          s.logger.Printf("warn: close drain error: %s", err.Error())
-        }
-        conn.Close()
+        worker := val.(*PubWorker)
+        worker.stop()
         s.dstMap.Delete(sid)
       }
     }
