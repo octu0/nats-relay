@@ -2,6 +2,6 @@ package nrelay
 
 const (
   AppName string = "nats-relay"
-  Version string = "1.5.4"
+  Version string = "1.5.5"
   UA      string = AppName + "/" + Version
 )
