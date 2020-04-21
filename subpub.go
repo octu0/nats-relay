@@ -3,11 +3,16 @@ package nrelay
 import(
   "log"
   "sync"
+  "time"
   "strings"
 
   "github.com/nats-io/nats.go"
   "github.com/lafikl/consistent"
   "github.com/rs/xid"
+)
+
+var(
+  flushTO  = 5 * time.Millisecond
 )
 
 type ConnFactory func(id int) (*nats.Conn, error)
@@ -59,6 +64,7 @@ func (w *PubWorker) runPubLoop() {
 
     case d := <-w.queue:
       w.conn.Publish(d.subject, d.data)
+      w.conn.FlushTimeout(flushTO)
     }
   }
 }
@@ -101,11 +107,13 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
     sid, err := s.sharding.GetLeast(subj)
     if err != nil {
       fallback.Publish(msg.Subject, msg.Data)
+      fallback.FlushTimeout(flushTO)
       return
     }
     val, ok := s.dstMap.Load(sid)
     if ok != true {
       fallback.Publish(msg.Subject, msg.Data)
+      fallback.FlushTimeout(flushTO)
       return
     }
 
