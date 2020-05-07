@@ -3,6 +3,7 @@ package nrelay
 import(
   "log"
   "sync"
+  "sync/atomic"
   "time"
   "strings"
 
@@ -29,6 +30,7 @@ type PubWorker struct {
   logger *log.Logger
   queue  PubQueue
   done   DonePubLoop
+  ready  int32
 }
 func newPubWorker(id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
   w       := new(PubWorker)
@@ -37,7 +39,20 @@ func newPubWorker(id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
   w.logger = logger
   w.queue  = make(PubQueue, 0)
   w.done   = make(DonePubLoop)
+  w.ready  = int32(1)
   return w
+}
+func (w *PubWorker) isReady() bool {
+  if atomic.LoadInt32(&w.ready) == 0 {
+    return false
+  }
+  return true
+}
+func (w *PubWorker) setBusy() {
+  atomic.StoreInt32(&w.ready, int32(0))
+}
+func (w *PubWorker) setReady() {
+  atomic.StoreInt32(&w.ready, int32(1))
 }
 func (w *PubWorker) publish(subject string, data []byte) {
   w.queue <-&Pub{subject, data}
@@ -54,8 +69,24 @@ func (w *PubWorker) stop() {
 func (w *PubWorker) start() {
   go w.runPubLoop()
 }
+func (w *PubWorker) pub(queue []*Pub, done func()) {
+  defer done()
+
+  for _, d := range queue {
+    w.conn.Publish(d.subject, d.data)
+  }
+  w.conn.FlushTimeout(flushTO)
+}
 func (w *PubWorker) runPubLoop() {
   defer w.logger.Printf("debug: %s publoop done", w.id)
+
+  buffer  := make([]*Pub, 0)
+  checker := make(chan struct{}, 0)
+  check   := func(c chan struct{}) func() {
+    return func(){
+      c <-struct{}{}
+    }
+  }(checker)
 
   for {
     select {
@@ -63,8 +94,26 @@ func (w *PubWorker) runPubLoop() {
       return
 
     case d := <-w.queue:
-      w.conn.Publish(d.subject, d.data)
-      w.conn.FlushTimeout(flushTO)
+      buffer = append(buffer, d)
+      go check()
+
+    case <-checker:
+      if len(buffer) < 1 {
+        continue
+      }
+
+      if w.isReady() {
+        w.setBusy()
+
+        queue := make([]*Pub, len(buffer))
+        copy(queue, buffer)
+        buffer = buffer[len(buffer):] // clear
+
+        go w.pub(queue, func(){
+          w.setReady()
+          go check()
+        })
+      }
     }
   }
 }
