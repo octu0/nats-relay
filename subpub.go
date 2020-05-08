@@ -12,6 +12,11 @@ import(
   "github.com/rs/xid"
 )
 
+const(
+  WorkerBusy  int32 = 0
+  WorkerReady int32 = 1
+)
+
 var(
   flushTO  = 5 * time.Millisecond
 )
@@ -39,20 +44,14 @@ func newPubWorker(id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
   w.logger = logger
   w.queue  = make(PubQueue, 0)
   w.done   = make(DonePubLoop)
-  w.ready  = int32(1)
+  w.ready  = WorkerReady
   return w
 }
-func (w *PubWorker) isReady() bool {
-  if atomic.LoadInt32(&w.ready) == 0 {
-    return false
-  }
-  return true
-}
-func (w *PubWorker) setBusy() {
-  atomic.StoreInt32(&w.ready, int32(0))
+func (w *PubWorker) tryBusy() bool {
+  return atomic.CompareAndSwapInt32(&w.ready, WorkerReady, WorkerBusy)
 }
 func (w *PubWorker) setReady() {
-  atomic.StoreInt32(&w.ready, int32(1))
+  atomic.StoreInt32(&w.ready, WorkerReady)
 }
 func (w *PubWorker) publish(subject string, data []byte) {
   w.queue <-&Pub{subject, data}
@@ -102,9 +101,7 @@ func (w *PubWorker) runPubLoop() {
         continue
       }
 
-      if w.isReady() {
-        w.setBusy()
-
+      if w.tryBusy() {
         queue := make([]*Pub, len(buffer))
         copy(queue, buffer)
         buffer = buffer[len(buffer):] // clear
