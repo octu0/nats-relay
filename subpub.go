@@ -6,6 +6,7 @@ import(
   "sync/atomic"
   "time"
   "strings"
+  "context"
 
   "github.com/nats-io/nats.go"
   "github.com/lafikl/consistent"
@@ -28,6 +29,10 @@ type Pub struct {
   data      []byte
 }
 type PubQueue    chan *Pub
+type WorkerQueue struct {
+  queue []*Pub
+  done  func()
+}
 type DonePubLoop chan struct{}
 type PubWorker struct {
   id     string
@@ -68,31 +73,65 @@ func (w *PubWorker) stop() {
 func (w *PubWorker) start() {
   go w.runPubLoop()
 }
-func (w *PubWorker) pub(queue []*Pub, done func()) {
-  defer done()
+func (w *PubWorker) enqueue(wc chan *WorkerQueue, queue []*Pub, done func()){
+  defer func(){
+    if rcv := recover(); rcv != nil {
+      log.Printf("error: [recover] worker enqueue(%v) %v", w.id, rcv)
+    }
+  }()
 
-  for _, d := range queue {
-    w.conn.Publish(d.subject, d.data)
+  wc <-&WorkerQueue{queue, done}
+}
+func (w *PubWorker) workerLoop(ctx context.Context, wc chan *WorkerQueue) {
+  defer func(){
+    if rcv := recover(); rcv != nil {
+      log.Printf("error: [recover] worker loop(%v) %v", w.id, rcv)
+    }
+  }()
+
+  for {
+    select {
+    case <-ctx.Done():
+      return
+
+    case q := <-wc:
+      for _, d := range q.queue {
+        w.conn.Publish(d.subject, d.data)
+      }
+      w.conn.FlushTimeout(flushTO)
+      q.done()
+    }
   }
-  w.conn.FlushTimeout(flushTO)
 }
 func (w *PubWorker) runPubLoop() {
   defer w.logger.Printf("debug: %s publoop done", w.id)
 
-  buffer  := make([]*Pub, 0)
-  checker := make(chan struct{}, 0)
+  checker := make(chan struct{}, 1)
   check   := func(c chan struct{}) func() {
     return func(){
-      c <-struct{}{}
+      select {
+      case c <-struct{}{}:
+      default:
+        // drop: checks only once
+      }
     }
   }(checker)
 
+  ctx, cancel := context.WithCancel(context.Background())
+  defer cancel()
+
+  wc := make(chan *WorkerQueue, 0)
+  defer close(wc)
+  go w.workerLoop(ctx, wc)
+
+  buffer := make([]*Pub, 0)
   for {
     select {
     case <-w.done:
       return
 
     case d := <-w.queue:
+      // buffering & aggregate sequence
       buffer = append(buffer, d)
       go check()
 
@@ -106,10 +145,11 @@ func (w *PubWorker) runPubLoop() {
         copy(queue, buffer)
         buffer = buffer[len(buffer):] // clear
 
-        go w.pub(queue, func(){
+        done := func(){
           w.setReady()
-          go check()
-        })
+          check()
+        }
+        go w.enqueue(wc, queue, done)
       }
     }
   }
