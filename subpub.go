@@ -11,6 +11,7 @@ import(
   "github.com/nats-io/nats.go"
   "github.com/lafikl/consistent"
   "github.com/rs/xid"
+  "github.com/alitto/pond"
 )
 
 const(
@@ -35,6 +36,7 @@ type WorkerQueue struct {
 }
 type DonePubLoop chan struct{}
 type PubWorker struct {
+  tg     *pond.TaskGroup
   id     string
   conn   *nats.Conn
   logger *log.Logger
@@ -42,8 +44,9 @@ type PubWorker struct {
   done   DonePubLoop
   ready  int32
 }
-func newPubWorker(id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
+func newPubWorker(tg *pond.TaskGroup, id string, dst *nats.Conn, logger *log.Logger) *PubWorker {
   w       := new(PubWorker)
+  w.tg     = tg
   w.id     = id
   w.conn   = dst
   w.logger = logger
@@ -71,7 +74,7 @@ func (w *PubWorker) stop() {
   w.conn.Close()
 }
 func (w *PubWorker) start() {
-  go w.runPubLoop()
+  w.tg.Submit(w.runPubLoop)
 }
 func (w *PubWorker) enqueue(wc chan *WorkerQueue, queue []*Pub, done func()){
   defer func(){
@@ -122,7 +125,19 @@ func (w *PubWorker) runPubLoop() {
 
   wc := make(chan *WorkerQueue, 0)
   defer close(wc)
-  go w.workerLoop(ctx, wc)
+  w.tg.Submit(func(){
+    w.workerLoop(ctx, wc)
+  })
+
+  done := func(){
+    w.setReady()
+    check()
+  }
+  enq  := func(queue []*Pub, done func()) func() {
+    return func(){
+      w.enqueue(wc, queue, done)
+    }
+  }
 
   buffer := make([]*Pub, 0)
   for {
@@ -133,7 +148,9 @@ func (w *PubWorker) runPubLoop() {
     case d := <-w.queue:
       // buffering & aggregate sequence
       buffer = append(buffer, d)
-      go check()
+      w.tg.Submit(func(){
+        check()
+      })
 
     case <-checker:
       if len(buffer) < 1 {
@@ -145,11 +162,7 @@ func (w *PubWorker) runPubLoop() {
         copy(queue, buffer)
         buffer = buffer[len(buffer):] // clear
 
-        done := func(){
-          w.setReady()
-          check()
-        }
-        go w.enqueue(wc, queue, done)
+        w.tg.Submit(enq(queue, done))
       }
     }
   }
@@ -157,6 +170,7 @@ func (w *PubWorker) runPubLoop() {
 
 type Subpub struct {
   mutex      *sync.Mutex
+  wp         *pond.WorkerPool
   srcConn    *nats.Conn
   connType   string
   logger     *log.Logger
@@ -220,6 +234,7 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
     numShard = 1
   }
 
+  wp   := pond.New(numWorker, numWorker * numShard, pond.MinWorkers(numWorker))
   sids := make([]string, 0, numShard)
   for i := 0; i < numShard; i += 1 {
     dst, err := s.factory(i + 1)
@@ -229,7 +244,7 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
     }
 
     sid    := xid.New().String()
-    worker := newPubWorker(sid, dst, s.logger)
+    worker := newPubWorker(wp.Group(), sid, dst, s.logger)
     worker.start()
 
     s.sharding.Add(sid)
@@ -237,6 +252,7 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
     sids = append(sids, sid)
   }
   s.sids = sids
+  s.wp   = wp
 
   fallbackConn, err := s.factory(0)
   if err != nil {
@@ -286,6 +302,10 @@ func (s *Subpub) Close() error {
       s.logger.Printf("warn: close fallback drain error: %s", err.Error())
     }
     s.fallback.Close()
+  }
+
+  if s.wp != nil {
+    s.wp.StopAndWait()
   }
 
   return nil
