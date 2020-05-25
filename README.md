@@ -1,5 +1,10 @@
 # nats-relay
 
+[![Apache License](https://img.shields.io/github/license/octu0/nats-relay)](https://github.com/octu0/nats-relay/blob/master/LICENSE)
+[![GoDoc](https://godoc.org/github.com/octu0/nats-relay?status.svg)](https://godoc.org/github.com/octu0/nats-relay)
+[![Go Report Card](https://goreportcard.com/badge/github.com/octu0/nats-relay)](https://goreportcard.com/report/github.com/octu0/nats-relay)
+[![Releases](https://img.shields.io/github/v/release/octu0/nats-relay)](https://github.com/octu0/nats-relay/releases)
+
 Simple low-latency [NATS](https://nats.io/) relay(replication) server.
 
 Relay(replicate) one or any Topics in NATS server to another NATS server.
