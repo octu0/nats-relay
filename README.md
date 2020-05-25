@@ -95,7 +95,7 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.6.0
+   1.5.10
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
