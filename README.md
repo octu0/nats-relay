@@ -95,7 +95,7 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.1.0
+   1.6.0
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
@@ -109,3 +109,7 @@ GLOBAL OPTIONS:
    --help, -h                    show help
    --version, -v                 print the version
 ```
+
+## License
+
+Apache License 2.0, see LICENSE file for details.
