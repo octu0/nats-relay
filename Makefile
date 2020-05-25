@@ -2,7 +2,7 @@ VERSION_GO = version.go
 MAIN_GO    = cmd/main.go 
 
 _NAME      = $(shell grep -o 'AppName string = "[^"]*"' $(VERSION_GO)  | cut -d '"' -f2)
-_VERSION   = $(shell grep -o 'Version string = "[0-9]\.[0-9]\.[0-9]"' $(VERSION_GO) | cut -d '"' -f2)
+_VERSION   = $(shell grep -oE 'Version string = "[0-9]+\.[0-9]+\.[0-9]+"' $(VERSION_GO) | cut -d '"' -f2)
 
 _GOOS      = darwin
 _GOARCH    = amd64
@@ -16,7 +16,7 @@ deps:
 	go get gopkg.in/urfave/cli.v1
 	go get gopkg.in/yaml.v2
 	go get github.com/lafikl/consistent
-	go get github.com/alitto/pond
+	go get github.com/octu0/concache
 
 build:
 	go generate

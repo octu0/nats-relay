@@ -1,5 +1,10 @@
 # nats-relay
 
+[![Apache License](https://img.shields.io/github/license/octu0/nats-relay)](https://github.com/octu0/nats-relay/blob/master/LICENSE)
+[![GoDoc](https://godoc.org/github.com/octu0/nats-relay?status.svg)](https://godoc.org/github.com/octu0/nats-relay)
+[![Go Report Card](https://goreportcard.com/badge/github.com/octu0/nats-relay)](https://goreportcard.com/report/github.com/octu0/nats-relay)
+[![Releases](https://img.shields.io/github/v/release/octu0/nats-relay)](https://github.com/octu0/nats-relay/releases)
+
 Simple low-latency [NATS](https://nats.io/) relay(replication) server.
 
 Relay(replicate) one or any Topics in NATS server to another NATS server.
@@ -90,7 +95,7 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.1.0
+   1.5.10
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command
@@ -104,3 +109,7 @@ GLOBAL OPTIONS:
    --help, -h                    show help
    --version, -v                 print the version
 ```
+
+## License
+
+Apache License 2.0, see LICENSE file for details.
