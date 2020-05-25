@@ -33,7 +33,7 @@ type Subpub struct {
   subs       []*nats.Subscription
   topic      string
 }
-func NewSubpub(connType string, src *nats.Conn, logger *log.Logger, factory ConnFactory) *Subpub {
+func NewSubpub(connType string, src *nats.Conn, logger *log.Logger, factory connFactory) *Subpub {
   s         := new(Subpub)
   s.mutex    = new(sync.Mutex)
   s.srcConn  = src
