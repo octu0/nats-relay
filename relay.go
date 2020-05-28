@@ -8,6 +8,7 @@ import (
 
   "github.com/nats-io/nats.go"
   "github.com/rs/xid"
+  "github.com/octu0/chanque"
 )
 
 type RelayServer struct {
@@ -18,6 +19,7 @@ type RelayServer struct {
   conf      RelayConfig
   subpubs   []*Subpub
   logger    *log.Logger
+  executor  *chanque.Executor
 }
 
 func NewRelayServer(ctx context.Context) *RelayServer {
@@ -51,6 +53,12 @@ func NewRelayServer(ctx context.Context) *RelayServer {
     r.logger = ctxLogger.(*log.Logger)
   } else {
     r.logger = ctx.Value("logger.general").(*GeneralLogger).Logger()
+  }
+
+  var executor interface{}
+  executor = ctx.Value("relay.executor")
+  if executor != nil {
+    r.executor = executor.(*chanque.Executor)
   }
 
   return r
@@ -158,14 +166,14 @@ func (r *RelayServer) subscribeTopics(src *nats.Conn, connType string) error {
 
     // single instance subs many goroutines
     subpub := NewSubpub(connType, src, r.logger, r.createRelayConn)
-    if err := subpub.Subscribe(topic, group, numWorker, numShard, prefixSize, useLoadBalance); err != nil {
+    if err := subpub.Subscribe(topic, group, numWorker, numShard, prefixSize, useLoadBalance, r.executor); err != nil {
       r.logger.Printf("error: subpub subscribe failure: %s", err.Error())
       lastErr = err
     }
     sp = append(sp, subpub)
 
     if lastErr == nil {
-      log.Printf("info: subscribing %s to %d deque worker", topic, numWorker)
+      log.Printf("info: subscribe %s to %d dequeue worker", topic, numWorker)
     }
   }
   src.Flush()
