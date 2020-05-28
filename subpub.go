@@ -52,37 +52,45 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
     fallback.Publish(msg.Subject, msg.Data)
     fallback.FlushTimeout(flushTO)
   }
-  return func(msg *nats.Msg) {
+  subject := func(msg *nats.Msg) string {
     subj := msg.Subject
     if 0 < prefixSize && prefixSize < len(subj) {
       subj = subj[0 : prefixSize]
     }
-    var sid string
-    if useLoadBalance {
-      s, err := s.sharding.GetLeast(subj)
+    return subj
+  }
+  if useLoadBalance {
+    return func(msg *nats.Msg){
+      subj   := subject(msg)
+      sid, err := s.sharding.GetLeast(subj)
       if err != nil {
         fpub(msg)
         return
       }
-      sid = s
-    } else {
-      s, err := s.sharding.Get(subj)
-      if err != nil {
+      val, ok := s.dstMap.Load(sid)
+      if ok != true {
         fpub(msg)
         return
       }
-      sid = s
+      s.sharding.Inc(sid)
+      defer s.sharding.Done(sid)
+
+      worker := val.(chanque.Worker)
+      worker.Enqueue(msg)
+    }
+  }
+  return func(msg *nats.Msg) {
+    subj     := subject(msg)
+    sid, err := s.sharding.Get(subj)
+    if err != nil {
+      fpub(msg)
+      return
     }
 
     val, ok := s.dstMap.Load(sid)
     if ok != true {
       fpub(msg)
       return
-    }
-
-    if useLoadBalance {
-      s.sharding.Inc(sid)
-      defer s.sharding.Done(sid)
     }
 
     worker := val.(chanque.Worker)
@@ -121,19 +129,21 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
       return err
     }
 
-    publishHandler := s.createPublishHandler(dst)
-    flushHandler   := s.createFlushHandler(dst)
-    panicHandler   := s.createWorkerPanicHandler()
-    worker         := chanque.NewBufferWorker(publishHandler,
-      chanque.WorkerPostHook(flushHandler),
-      chanque.WorkerPanicHandler(panicHandler),
-      chanque.WorkerExecutor(executor),
-    )
+    for i := 0; i < numWorker; i += 1 {
+      publishHandler := s.createPublishHandler(dst)
+      flushHandler   := s.createFlushHandler(dst)
+      panicHandler   := s.createWorkerPanicHandler()
+      worker         := chanque.NewBufferWorker(publishHandler,
+        chanque.WorkerPostHook(flushHandler),
+        chanque.WorkerPanicHandler(panicHandler),
+        chanque.WorkerExecutor(executor),
+      )
 
-    sid    := xid.New().String()
-    s.sharding.Add(sid)
-    s.dstMap.Store(sid, worker)
-    sids = append(sids, sid)
+      sid := xid.New().String()
+      s.sharding.Add(sid)
+      s.dstMap.Store(sid, worker)
+      sids = append(sids, sid)
+    }
   }
   s.sids = sids
 
