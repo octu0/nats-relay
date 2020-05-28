@@ -48,21 +48,35 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
   if prefixSize < 1 {
     prefixSize = 0
   }
+  fpub := func(msg *nats.Msg) {
+    fallback.Publish(msg.Subject, msg.Data)
+    fallback.FlushTimeout(flushTO)
+  }
   return func(msg *nats.Msg) {
     subj := msg.Subject
     if 0 < prefixSize && prefixSize < len(subj) {
       subj = subj[0 : prefixSize]
     }
-    sid, err := s.sharding.GetLeast(subj)
-    if err != nil {
-      fallback.Publish(msg.Subject, msg.Data)
-      fallback.FlushTimeout(flushTO)
-      return
+    var sid string
+    if useLoadBalance {
+      s, err := s.sharding.GetLeast(subj)
+      if err != nil {
+        fpub(msg)
+        return
+      }
+      sid = s
+    } else {
+      s, err := s.sharding.Get(subj)
+      if err != nil {
+        fpub(msg)
+        return
+      }
+      sid = s
     }
+
     val, ok := s.dstMap.Load(sid)
     if ok != true {
-      fallback.Publish(msg.Subject, msg.Data)
-      fallback.FlushTimeout(flushTO)
+      fpub(msg)
       return
     }
 
