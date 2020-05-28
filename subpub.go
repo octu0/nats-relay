@@ -91,7 +91,7 @@ func (s *Subpub) createWorkerPanicHandler() chanque.PanicHandler {
     s.logger.Printf("error: [recover] worker happen(on %s): %v", panicType, rcv)
   }
 }
-func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixSize int, useLoadBalance bool) error {
+func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixSize int, useLoadBalance bool, executor *chanque.Executor) error {
   s.mutex.Lock()
   defer s.mutex.Unlock()
 
@@ -113,6 +113,7 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
     worker         := chanque.NewBufferWorker(publishHandler,
       chanque.WorkerPostHook(flushHandler),
       chanque.WorkerPanicHandler(panicHandler),
+      chanque.WorkerExecutor(executor),
     )
 
     sid    := xid.New().String()
