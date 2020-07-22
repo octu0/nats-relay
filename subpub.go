@@ -18,6 +18,11 @@ var(
 
 type connFactory func(id int) (*nats.Conn, error)
 
+type syncWorker struct {
+  mutex  *sync.Mutex
+  worker chanque.Worker
+}
+
 type Subpub struct {
   mutex      *sync.Mutex
   srcConn    *nats.Conn
@@ -75,8 +80,10 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
       s.sharding.Inc(sid)
       defer s.sharding.Done(sid)
 
-      worker := val.(chanque.Worker)
-      worker.Enqueue(msg)
+      sw := val.(*syncWorker)
+      sw.mutex.Lock()
+      defer sw.mutex.Unlock()
+      sw.worker.Enqueue(msg)
     }
   }
   return func(msg *nats.Msg) {
@@ -93,8 +100,10 @@ func (s *Subpub) makeDispatcher(fallback *nats.Conn, prefixSize int, useLoadBala
       return
     }
 
-    worker := val.(chanque.Worker)
-    worker.Enqueue(msg)
+    sw := val.(*syncWorker)
+    sw.mutex.Lock()
+    defer sw.mutex.Unlock()
+    sw.worker.Enqueue(msg)
   }
 }
 func (s *Subpub) createPublishHandler(conn *nats.Conn) chanque.WorkerHandler {
@@ -122,10 +131,10 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
   }
 
   sids := make([]string, 0, numShard)
-  for i := 0; i < numShard; i += 1 {
-    dst, err := s.factory(i + 1)
+  for n := 0; n < numShard; n += 1 {
+    dst, err := s.factory(n + 1)
     if err != nil {
-      s.logger.Printf("error: relay nats(%d) connection failure: %s", i, err.Error())
+      s.logger.Printf("error: relay nats(%d) connection failure: %s", n, err.Error())
       return err
     }
 
@@ -141,7 +150,10 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
 
       sid := xid.New().String()
       s.sharding.Add(sid)
-      s.dstMap.Store(sid, worker)
+      s.dstMap.Store(sid, &syncWorker{
+        mutex:  new(sync.Mutex),
+        worker: worker,
+      })
       sids = append(sids, sid)
     }
   }
@@ -154,16 +166,14 @@ func (s *Subpub) Subscribe(topic, group string, numWorker, numShard int, prefixS
   }
   s.fallback = fallbackConn
 
-  subs := make([]*nats.Subscription, numWorker)
-  for i := 0; i < numWorker; i += 1 {
-    d := s.makeDispatcher(fallbackConn, prefixSize, useLoadBalance)
-    sub, err := s.srcConn.QueueSubscribe(topic, group, d)
-    if err != nil {
-      s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
-      return err
-    }
-    subs[i] = sub
+  subs := make([]*nats.Subscription, 0)
+  dispatcher := s.makeDispatcher(fallbackConn, prefixSize, useLoadBalance)
+  sub, err := s.srcConn.QueueSubscribe(topic, group, dispatcher)
+  if err != nil {
+    s.logger.Printf("error: topic(%s) subscribe failure: %s", topic, group)
+    return err
   }
+  subs = append(subs, sub)
   s.srcConn.Flush()
 
   s.subs    = subs
@@ -184,9 +194,11 @@ func (s *Subpub) Close() error {
   if 0 < len(s.sids) {
     for _, sid := range s.sids {
       if val, ok := s.dstMap.Load(sid); ok {
-        worker := val.(chanque.Worker)
-        worker.ShutdownAndWait()
+        sw     := val.(*syncWorker)
+        sw.mutex.Lock()
+        sw.worker.ShutdownAndWait()
         s.dstMap.Delete(sid)
+        sw.mutex.Unlock()
       }
     }
   }
