@@ -3,12 +3,10 @@ package main
 import(
   "log"
   "runtime"
-  "context"
   "os"
   "os/signal"
   "syscall"
   "io/ioutil"
-  "time"
 
   "github.com/comail/colog"
   "gopkg.in/urfave/cli.v1"
@@ -43,8 +41,8 @@ func action(c *cli.Context) error {
     }
   }
 
-  gene := nrelay.NewGeneralLogger(config)
-  colog.SetOutput(gene)
+  logger := nrelay.NewGeneralLogger(config)
+  colog.SetOutput(logger)
 
   data, err := ioutil.ReadFile(config.RelayYaml)
   if err != nil {
@@ -58,18 +56,11 @@ func action(c *cli.Context) error {
     return err
   }
 
-  ctx := context.Background()
-  ctx  = context.WithValue(ctx, "config", config)
-  ctx  = context.WithValue(ctx, "logger.general", gene)
-  ctx  = context.WithValue(ctx, "relay.config", relayConfig)
-
-  relayServer := nrelay.NewRelayServer(ctx)
+  svrConfig   := nrelay.NewServerConfig(logger.Logger(), nil)
+  relayServer := nrelay.NewServer(svrConfig, relayConfig)
   error_chan  := make(chan error, 0)
   stopService := func() error {
-    sctx, cancel := context.WithTimeout(ctx, 10 * time.Second);
-    defer cancel()
-
-    if err := relayServer.Stop(sctx); err != nil {
+    if err := relayServer.Stop(); err != nil {
       log.Printf("error: %s", err.Error())
       return err
     }
@@ -78,7 +69,7 @@ func action(c *cli.Context) error {
   }
 
   go func(){
-    if err := relayServer.Start(context.TODO()); err != nil {
+    if err := relayServer.Start(); err != nil {
       error_chan <- err
     }
   }()

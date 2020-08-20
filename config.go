@@ -1,11 +1,11 @@
 package nrelay
 
 type Config struct {
-  DebugMode      bool
-  VerboseMode    bool
-  Procs          int
-  LogDir         string
-  RelayYaml      string
+	DebugMode   bool
+	VerboseMode bool
+	Procs       int
+	LogDir      string
+	RelayYaml   string
 }
 
 //
@@ -21,15 +21,66 @@ type Config struct {
 //     worker: 2
 //
 type RelayConfig struct {
-  PrimaryUrl     string                       `yaml:"primary"`
-  SecondaryUrl   string                       `yaml:"secondary"`
-  NatsUrl        string                       `yaml:"nats"`
-  Topics         map[string]RelayClientConfig `yaml:"topic"`
+	PrimaryUrl   string                       `yaml:"primary"`
+	SecondaryUrl string                       `yaml:"secondary"`
+	NatsUrl      string                       `yaml:"nats"`
+	Topics       map[string]RelayClientConfig `yaml:"topic"`
 }
 
 type RelayClientConfig struct {
-  WorkerNum      int    `yaml:"worker"`
-  ShardNum       int    `yaml:"shard"`
-  PrefixSize     int    `yaml:"prefix"`
-  UseLoadBalance bool   `yaml:"loadbalance"`
+	WorkerNum      int  `yaml:"worker"`
+	PrefixSize     int  `yaml:"prefix"`
+	UseLoadBalance bool `yaml:"loadbalance"`
+}
+
+func Topics(topics ...*topicNameOptionTuple) map[string]RelayClientConfig {
+	conf := make(map[string]RelayClientConfig)
+	for _, topic := range topics {
+		conf[topic.name] = topic.option
+	}
+	return conf
+}
+
+type topicNameOptionTuple struct {
+	name   string
+	option RelayClientConfig
+}
+
+func defaultTopicOption() RelayClientConfig {
+	return RelayClientConfig{
+		WorkerNum:      1,
+		PrefixSize:     0,
+		UseLoadBalance: false,
+	}
+}
+
+type topicOptionFunc func(*RelayClientConfig)
+
+func Topic(name string, funcs ...topicOptionFunc) *topicNameOptionTuple {
+	tuple := &topicNameOptionTuple{
+		name:   name,
+		option: defaultTopicOption(),
+	}
+	for _, fn := range funcs {
+		fn(&tuple.option)
+	}
+	return tuple
+}
+
+func WorkerNum(num int) topicOptionFunc {
+	return func(opt *RelayClientConfig) {
+		opt.WorkerNum = num
+	}
+}
+
+func PrefixSize(size int) topicOptionFunc {
+	return func(opt *RelayClientConfig) {
+		opt.PrefixSize = size
+	}
+}
+
+func UseLoadBalance(use bool) topicOptionFunc {
+	return func(opt *RelayClientConfig) {
+		opt.UseLoadBalance = use
+	}
 }
