@@ -61,9 +61,11 @@ func NewGeneralLogger(config Config) *GeneralLogger {
   l.cl = c.NewLogger()
   return l
 }
+
 func (l *GeneralLogger) Write(p []byte) (int, error) {
   return l.m.Write(p)
 }
+
 func (l *GeneralLogger) Logger() *log.Logger {
   return l.cl
 }
