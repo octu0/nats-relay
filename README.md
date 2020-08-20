@@ -41,31 +41,31 @@ Logger interface, specify [log.Logger](https://golang.org/pkg/log/#Logger) and u
 which will be set automatically by specifying nil
 
 ```go
-import(
-  "time"
-  "github.com/nats-io/nats.go"
-  "github.com/octu0/nats-relay"
+import (
+	"github.com/nats-io/nats.go"
+	"github.com/octu0/nats-relay"
+	"time"
 )
 
 func main() {
-  serverConf := nrelay.DefaultServerConfig()
-  relayConf  := nrelay.RelayConfig{
-    PrimaryUrl:   "nats://primary-natsd.local:4222",
-    SecondaryUrl: "nats://secondary-natsd.local:4222",
-    NatsUrl:      "nats://localhost:4222",
-    Topics:       nrelay.Topics(
-      nrelay.Topic("foo.>", nrelay.WorkerNum(2)),
-      nrelay.Topic("bar.*", nrelay.WorkerNum(2)),
-      nrelay.Topic("baz.1.>", nrelay.WorkerNum(2)),
-      nrelay.Topic("baz.2.>", nrelay.WorkerNum(2)),
-    },
-  }
-  relayd     := nrelay.NewServer(serverConf, relayConf,
-    nats.PingInterval(500 * time.Millisecond),
-    nats.ReconnectBufSize(16 * 1024 * 1024),
-    nats.CustomDialer(...),
-  )
-  relayd.Start()
+	serverConf := nrelay.DefaultServerConfig()
+	relayConf := nrelay.RelayConfig{
+		PrimaryUrl:   "nats://primary-natsd.local:4222",
+		SecondaryUrl: "nats://secondary-natsd.local:4222",
+		NatsUrl:      "nats://localhost:4222",
+		Topics: nrelay.Topics(
+			nrelay.Topic("foo.>", nrelay.WorkerNum(2)),
+			nrelay.Topic("bar.*", nrelay.WorkerNum(2)),
+			nrelay.Topic("baz.1.>", nrelay.WorkerNum(2)),
+			nrelay.Topic("baz.2.>", nrelay.WorkerNum(2)),
+		),
+	}
+	relayd := nrelay.NewServer(serverConf, relayConf,
+		nats.PingInterval(500*time.Millisecond),
+		nats.ReconnectBufSize(16*1024*1024),
+		nats.CustomDialer(...),
+	)
+	relayd.Start()
 }
 ```
 
