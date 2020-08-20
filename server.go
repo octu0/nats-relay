@@ -33,7 +33,7 @@ type Server struct {
   executor      *chanque.Executor
   primaryPool   *pool.ConnPool
   secondaryPool *pool.ConnPool
-  localPool     *pool.ConnPool
+  relayPool     *pool.ConnPool
   subpubs       []*Subpub
 }
 
@@ -56,8 +56,8 @@ func NewServer(svrConf *ServerConfig, relayConf RelayConfig, options ...nats.Opt
 
   natsOpts      := append(options, nats.NoEcho(), nats.Name(UA), nats.MaxReconnects(-1))
 
-  var primaryPool,secondaryPool,localPool *pool.ConnPool
-  localPool     = pool.New(maxWorkerNum, relayConf.NatsUrl, natsOpts...)
+  var primaryPool,secondaryPool,relayPool *pool.ConnPool
+  relayPool     = pool.New(maxWorkerNum, relayConf.NatsUrl, natsOpts...)
   primaryPool   = pool.New(maxWorkerNum, relayConf.PrimaryUrl, natsOpts...)
   if 0 < len(relayConf.SecondaryUrl) {
     secondaryPool = pool.New(maxWorkerNum, relayConf.SecondaryUrl, natsOpts...)
@@ -71,7 +71,7 @@ func NewServer(svrConf *ServerConfig, relayConf RelayConfig, options ...nats.Opt
     executor:      executor,
     primaryPool:   primaryPool,
     secondaryPool: secondaryPool,
-    localPool:     localPool,
+    relayPool:     relayPool,
     subpubs:       make([]*Subpub, 0, topicNum),
   }
 }
@@ -79,7 +79,7 @@ func NewServer(svrConf *ServerConfig, relayConf RelayConfig, options ...nats.Opt
 func (r *Server) createSubpub(connType string, targetPool *pool.ConnPool) []*Subpub {
   subs := make([]*Subpub, 0, len(r.relayConf.Topics))
   for topicName, conf := range r.relayConf.Topics {
-    s   := NewSubpub(connType, topicName, targetPool, r.localPool, r.logger, r.executor, conf)
+    s   := NewSubpub(connType, topicName, targetPool, r.relayPool, r.logger, r.executor, conf)
     subs = append(subs, s)
   }
   return subs

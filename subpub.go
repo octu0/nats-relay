@@ -71,8 +71,8 @@ func NewSubpub(
     shards:   shards,
     shardMap: new(sync.Map),
     shardIds: shardIds,
-    dstConns: make([]*nats.Conn, 0, workerNum),
-    workers:  make([]*pubWorker, 0, workerNum),
+    dstConns: make([]*nats.Conn, workerNum),
+    workers:  make([]*pubWorker, workerNum),
   }
 }
 func (s *Subpub) Subscribe() error {
@@ -91,7 +91,7 @@ func (s *Subpub) Subscribe() error {
     return err
   }
 
-  for idx, sid := range s.shardIds {
+  for idx, _ := range s.shardIds {
     nc, err := s.dstPool.Get()
     if err != nil {
       s.logger.Printf("error: [%s] relay nats dst connection failure: %s", s.connType, err.Error())
@@ -100,7 +100,7 @@ func (s *Subpub) Subscribe() error {
     s.dstConns[idx] = nc
   }
 
-  for idx, sid := range s.shardIds {
+  for idx, _ := range s.shardIds {
     s.workers[idx] = createPubWorker(s.dstConns[idx], s.executor, s.logger)
   }
 

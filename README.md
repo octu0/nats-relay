@@ -9,22 +9,24 @@ Simple low-latency [NATS](https://nats.io/) relay(replication) server.
 
 Relay(replicate) one or any Topics in NATS server to another NATS server.
 
-![nats-relay](https://user-images.githubusercontent.com/42143893/50095373-c3fc9a00-0258-11e9-9174-74775dfe9d5d.png)
+![nats-relay usage](https://user-images.githubusercontent.com/42143893/50095373-c3fc9a00-0258-11e9-9174-74775dfe9d5d.png)
 
 ## Configuration
 
 Configuration is done using a YAML file:
 
-```
-primary: "nats://master1.example.com:4222/"
-secondary: "nats://master2.example.com:4222/"
-nats: "nats://localhost:4222/"
+```yaml
+primary:   "nats://primary-natsd.local:4222/"
+secondary: "nats://secondary-natsd.local:4222/"
+nats:      "nats://localhost:4222/"
 topic:
   "foo.>":
     worker: 2
   "bar.*":
     worker: 2
-  "baz.quux":
+  "baz.1.>":
+    worker: 2
+  "baz.2.>":
     worker: 2
 ```
 
@@ -32,42 +34,39 @@ Specifiable wildcard('>' or '*') topicss are available
 
 see more [examples](https://github.com/octu0/nats-relay/tree/master/example)
 
-## Customize
+## Embeding
 
-### logger
+Start with `NewServer` and `*ServerConfig` for server configuration.  
+Logger interface, specify [log.Logger](https://golang.org/pkg/log/#Logger) and use [chanque](https://github.com/octu0/chanque) to management goroutine,
+which will be set automatically by specifying nil
 
-need to implement [log.Logger](https://golang.org/pkg/log/#Logger)
+```go
+import(
+  "time"
+  "github.com/nats-io/nats.go"
+  "github.com/octu0/nats-relay"
+)
 
-```
-type MyLogger struct { ... }
-func (l *MyLogger) Fatalf(string, v ...interface{}) { ... }
-:
-func (l *MyLogger) Printf(string, v ...interface{}) { ... }
-
-ctx  = context.WithValue(ctx, "relay.logger", new(MyLogger))
-```
-
-### nats.Option
-
-set []nats.Option to context
-
-```
-// []nats.Option
-ctx := context.WithValue(ctx, "relay.nats-options", []nats.Option{
-  nats.PingInterval(800 * time.Millisecond),
-  nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error){
-    if err == nats.ErrSlowConsumer {
-      pendingMsgs, _, e := sub.Pending()
-      if e != nil {
-        log.Printf("warn: does not get pending messages: %v", e)
-        return
-      }
-      log.Printf("warn: falling behind with %d pending messages on subject %s", pendingMsgs, sub.Subject)
-    } else {
-      log.Printf("error: %v", err)
-    }
-  }),
-})
+func main() {
+  serverConf := nrelay.DefaultServerConfig()
+  relayConf  := nrelay.RelayConfig{
+    PrimaryUrl:   "nats://primary-natsd.local:4222",
+    SecondaryUrl: "nats://secondary-natsd.local:4222",
+    NatsUrl:      "nats://localhost:4222",
+    Topics:       nrelay.Topics(
+      nrelay.Topic("foo.>", nrelay.WorkerNum(2)),
+      nrelay.Topic("bar.*", nrelay.WorkerNum(2)),
+      nrelay.Topic("baz.1.>", nrelay.WorkerNum(2)),
+      nrelay.Topic("baz.2.>", nrelay.WorkerNum(2)),
+    },
+  }
+  relayd     := nrelay.NewServer(serverConf, relayConf,
+    nats.PingInterval(500 * time.Millisecond),
+    nats.ReconnectBufSize(16 * 1024 * 1024),
+    nats.CustomDialer(...),
+  )
+  relayd.Start()
+}
 ```
 
 ## Build
@@ -95,7 +94,7 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.5.10
+   1.6.0
 
 COMMANDS:
      help, h  Shows a list of commands or help for one command

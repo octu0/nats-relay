@@ -63,15 +63,6 @@ func testWriter(url string, topic string, count int) (chan struct{}, error) {
   }()
   return latch, nil
 }
-func testNatsConnFactory(connType string, url string) connFactory {
-  return func(id int) (*nats.Conn, error) {
-    return nats.Connect(url,
-      nats.DontRandomize(),
-      nats.NoEcho(),
-      nats.Name(fmt.Sprintf("%s/%d", connType, id)),
-    )
-  }
-}
 
 func testReader(url string, topic string, count int, tt *testing.T) (*sync.WaitGroup, error) {
   nc, err := nats.Connect(url,
@@ -133,7 +124,7 @@ func TestConcurrentWrite(t *testing.T) {
   primaryUrl := fmt.Sprintf("nats://%s", primary.Addr().String())
   relayUrl   := fmt.Sprintf("nats://%s", relay.Addr().String())
 
-  concW := 8
+  concW := 16
   n := 100
   latchs := make([]chan struct{}, 0)
   topics := make([]string, 0)
@@ -159,25 +150,27 @@ func TestConcurrentWrite(t *testing.T) {
     wgs = append(wgs, wg)
   }
 
-  primaryNC, err := testNatsConnFactory("primary", primaryUrl)(0)
-  if err != nil {
-    t.Errorf("%w", err)
+  l      := log.New(&testLogWriter{t}, " nrlay", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+  exec   := chanque.NewExecutor(100, 1000)
+
+  tps :=  make([]*topicNameOptionTuple, concW)
+  for i := 0; i < concW; i += 1 {
+    tps[i] = Topic(fmt.Sprintf("topic.foo.%d.>", i), WorkerNum(10), PrefixSize(15))
   }
 
-  worker := 10
-  shard  := 4
-  prefix := 15
-  lb     := false
-  exec   := chanque.NewExecutor(100, 1000)
-  l      := log.New(&testLogWriter{t}, " nrlay", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
-  sps    := make([]*Subpub, len(topics))
-  for i := 0; i < len(topics); i += 1 {
-    topic := fmt.Sprintf("topic.foo.%d.>", i)
-    group := fmt.Sprintf("group-%s", topic)
-    sp := NewSubpub("primary", primaryNC, l, testNatsConnFactory("relay", relayUrl))
-    sp.Subscribe(topic, group, worker, shard, prefix, lb, exec)
-    sps[i] = sp
+  svrConf := NewServerConfig(l, exec)
+  rlyConf := RelayConfig{
+    PrimaryUrl:   primaryUrl,
+    SecondaryUrl: "",
+    NatsUrl:      relayUrl,
+    Topics:       Topics(tps...),
   }
+  svr := NewServer(svrConf, rlyConf,
+    nats.NoEcho(),
+  )
+  svr.Start()
+  defer svr.Stop()
+
   t.Log("start")
   for _, latch := range latchs {
     latch <-struct{}{}
@@ -185,8 +178,5 @@ func TestConcurrentWrite(t *testing.T) {
   t.Log("wait")
   for _, wg := range wgs {
     wg.Wait()
-  }
-  for _, sp := range sps {
-    sp.Close()
   }
 }
