@@ -76,6 +76,7 @@ func NewSubpub(
 		workers:  make([]*pubWorker, workerNum),
 	}
 }
+
 func (s *Subpub) Subscribe() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -239,9 +240,11 @@ func createPubWorker(dst *nats.Conn, executor *chanque.Executor, logger *log.Log
 	)
 	return &pubWorker{worker}
 }
+
 func (w *pubWorker) Enqueue(msg *nats.Msg) {
 	w.worker.Enqueue(msg)
 }
+
 func (w *pubWorker) Stop() {
 	w.worker.Shutdown()
 }
@@ -252,11 +255,13 @@ func createPublishHandler(conn *nats.Conn) chanque.WorkerHandler {
 		conn.Publish(msg.Subject, msg.Data)
 	}
 }
+
 func createFlushHandler(conn *nats.Conn) chanque.WorkerHook {
 	return func() {
 		conn.FlushTimeout(defaultFlushTimeout)
 	}
 }
+
 func createWorkerPanicHandler(logger *log.Logger) chanque.PanicHandler {
 	return func(panicType chanque.PanicType, rcv interface{}) {
 		logger.Printf("error: [recover] worker happen(on %s): %v", panicType, rcv)
