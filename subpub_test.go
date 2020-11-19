@@ -115,11 +115,11 @@ func (w *testLogWriter) Write(p []byte) (int, error) {
 func TestConcurrentWrite(t *testing.T) {
 	primary, err := testStartNatsd(4222)
 	if err != nil {
-		t.Errorf("%s", err)
+		t.Fatalf(err.Error())
 	}
 	relay, err := testStartNatsd(4223)
 	if err != nil {
-		t.Errorf("%s", err)
+		t.Fatalf(err.Error())
 	}
 
 	primaryUrl := fmt.Sprintf("nats://%s", primary.Addr().String())
