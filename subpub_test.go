@@ -115,11 +115,11 @@ func (w *testLogWriter) Write(p []byte) (int, error) {
 func TestConcurrentWrite(t *testing.T) {
 	primary, err := testStartNatsd(4222)
 	if err != nil {
-		t.Errorf("%w", err)
+		t.Errorf("%s", err)
 	}
 	relay, err := testStartNatsd(4223)
 	if err != nil {
-		t.Errorf("%w", err)
+		t.Errorf("%s", err)
 	}
 
 	primaryUrl := fmt.Sprintf("nats://%s", primary.Addr().String())
@@ -135,7 +135,7 @@ func TestConcurrentWrite(t *testing.T) {
 			topic := fmt.Sprintf("topic.foo.%d.%s", i, key)
 			latch, err := testWriter(primaryUrl, topic, n)
 			if err != nil {
-				t.Errorf("%w", err)
+				t.Errorf("%s", err)
 			}
 			latchs = append(latchs, latch)
 			topics = append(topics, topic)
@@ -146,7 +146,7 @@ func TestConcurrentWrite(t *testing.T) {
 		topic := topics[i]
 		wg, err := testReader(relayUrl, topic, n, t)
 		if err != nil {
-			t.Errorf("%w", err)
+			t.Errorf("%s", err)
 		}
 		wgs = append(wgs, wg)
 	}
