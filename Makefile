@@ -8,25 +8,7 @@ _GOOS      = darwin
 _GOARCH    = amd64
 
 deps:
-	go get github.com/comail/colog
-	go get github.com/nats-io/nats-server/server
-	go get github.com/nats-io/nats.go/
-	go get github.com/lestrrat-go/file-rotatelogs
-	go get github.com/rs/xid
-	go get gopkg.in/urfave/cli.v1
-	go get gopkg.in/yaml.v2
-	go get github.com/lafikl/consistent
-	go get github.com/octu0/concache
-
-build:
-	go generate
-	GOOS=$(_GOOS) GOARCH=$(_GOARCH) go build -o $(_NAME) $(MAIN_GO)
-
-test: deps
-	go test -v ./...
-
-install: deps
-	go install
+	go mod download
 
 pkg-build      = GOOS=$(1) GOARCH=$(2) go build -o pkg/$(3)_$(1)_$(2)-$(_VERSION) $(4)
 pkg-build-main = $(call pkg-build,$(1),$(2),$(_NAME),$(MAIN_GO))
@@ -35,7 +17,6 @@ zip            = cp pkg/$(3)_$(1)_$(2)-$(_VERSION) pkg/$(3) && zip -j pkg/$(3)_$
 zip-main       = $(call zip,$(1),$(2),$(_NAME))
 
 pre-pkg:
-	go generate
 	mkdir -p pkg
 
 pkg-linux-amd64:
@@ -46,10 +27,24 @@ pkg-darwin-amd64:
 	$(call pkg-build-main,darwin,amd64)
 	$(call zip-main,darwin,amd64)
 
+.PHONY: build
+build:
+	GOOS=$(_GOOS) GOARCH=$(_GOARCH) go build -o $(_NAME) $(MAIN_GO)
+
+.PHONY: test
+test:
+	go test -v ./...
+
+.PHONY: install
+install: deps
+	go install
+
+.PHONY: pkg
 pkg: deps pre-pkg \
 	pkg-linux-amd64 \
 	pkg-darwin-amd64
 
+.PHONY: clean
 clean:
 	rm -f $(_NAME)
 	rm -f pkg/*
