@@ -29,7 +29,7 @@ pkg-darwin-amd64:
 
 .PHONY: build
 build:
-	GOOS=$(_GOOS) GOARCH=$(_GOARCH) go build -o $(_NAME) $(MAIN_GO)
+	GOOS=$(_GOOS) GOARCH=$(_GOARCH) go build -trimpath -o $(_NAME) $(MAIN_GO)
 
 .PHONY: test
 test:
