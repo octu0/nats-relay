@@ -10,7 +10,7 @@ require (
 	github.com/minio/blake2b-simd v0.0.0-20160723061019-3f5f724cb5b1 // indirect
 	github.com/nats-io/nats-server/v2 v2.1.9
 	github.com/nats-io/nats.go v1.10.0
-	github.com/octu0/chanque v1.0.12
+	github.com/octu0/chanque v1.0.14
 	github.com/octu0/nats-pool v1.0.6
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rs/xid v1.2.1
