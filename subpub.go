@@ -85,7 +85,6 @@ func (s *Subpub) Subscribe() error {
 	if prefixSize < 1 {
 		prefixSize = 0
 	}
-	useLoadBalance := s.conf.UseLoadBalance
 
 	srcConn, err := s.srcPool.Get()
 	if err != nil {
@@ -109,7 +108,7 @@ func (s *Subpub) Subscribe() error {
 	fallbackPub := s.makeFallbackPublish(s.dstConns[0])
 
 	var dispatcher nats.MsgHandler
-	if useLoadBalance {
+	if s.conf.UseLoadBalance {
 		dispatcher = s.makeLoadBalanceDispatcher(prefixSize, fallbackPub)
 	} else {
 		dispatcher = s.makeDispatcher(prefixSize, fallbackPub)
@@ -138,7 +137,7 @@ func (s *Subpub) Stop() error {
 	}
 	for _, wrk := range s.workers {
 		if wrk != nil {
-			wrk.Stop()
+			wrk.StopAndWait()
 		}
 	}
 	if s.srcConn != nil {
@@ -247,6 +246,10 @@ func (w *pubWorker) Enqueue(msg *nats.Msg) {
 
 func (w *pubWorker) Stop() {
 	w.worker.Shutdown()
+}
+
+func (w *pubWorker) StopAndWait() {
+	w.worker.ShutdownAndWait()
 }
 
 func createPublishHandler(conn *nats.Conn) chanque.WorkerHandler {
