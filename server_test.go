@@ -32,7 +32,9 @@ type testServerLogWriter struct {
 }
 
 func (w *testServerLogWriter) Write(p []byte) (int, error) {
-	w.t.Logf("%s", p)
+	if testing.Verbose() {
+		w.t.Logf("%s", p)
+	}
 	return len(p), nil
 }
 

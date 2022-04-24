@@ -80,7 +80,9 @@ type testRelayLogWriter struct {
 }
 
 func (w *testRelayLogWriter) Write(p []byte) (int, error) {
-	w.t.Logf("%s", p)
+	if testing.Verbose() {
+		w.t.Logf("%s", p)
+	}
 	return len(p), nil
 }
 
