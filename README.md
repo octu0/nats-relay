@@ -36,18 +36,22 @@ see more [examples](https://github.com/octu0/nats-relay/tree/master/example)
 
 ## Embeding
 
-Start with `NewServer` and `*ServerConfig` for server configuration.  
-Logger interface, specify [log.Logger](https://golang.org/pkg/log/#Logger) and use [chanque](https://github.com/octu0/chanque) to management goroutine,
-which will be set automatically by specifying nil
-
 ```go
 import (
+	"log"
+	"time"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/nats-io/nats.go"
 	"github.com/octu0/nats-relay"
-	"time"
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	serverConf := nrelay.DefaultServerConfig()
 	relayConf := nrelay.RelayConfig{
 		PrimaryUrl:   "nats://primary-natsd.local:4222",
@@ -60,18 +64,26 @@ func main() {
 			nrelay.Topic("baz.2.>", nrelay.WorkerNum(2)),
 		),
 	}
-	relayd := nrelay.NewServer(serverConf, relayConf,
-		nats.PingInterval(500*time.Millisecond),
-		nats.ReconnectBufSize(16*1024*1024),
-		nats.CustomDialer(...),
+	executor := chanque.NewExecutor(10, 100)
+	logger := log.New(os.Stdout, "nrelay ", log.Ldate|log.Ltime|log.Lshortfile)
+
+	svr := nrelay.NewServer(
+		nrelay.ServerOptRelayConfig(relayConfig),
+		nrelay.ServerOptExecutor(executor),
+		nrelay.ServerOptLogger(logger),
+		nrelay.ServerOptNatsOptions(
+			nats.PingInterval(500*time.Millisecond),
+			nats.ReconnectBufSize(16*1024*1024),
+			nats.CustomDialer(...),
+		),
 	)
-	relayd.Start()
+	svr.Run(ctx)
 }
 ```
 
 ## Build
 
-Build requires Go version 1.11+ installed.
+Build requires Go version 1.16+ installed.
 
 ```
 $ go version
@@ -94,19 +106,32 @@ USAGE:
    nats-relay [global options] command [command options] [arguments...]
 
 VERSION:
-   1.6.0
+   1.7.0
 
 COMMANDS:
+     relay    run relay server
      help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --relay-yaml value, -c value  relay configuration yaml file path (default: "./relay.yaml") [$NRELAY_RELAY_YAML]
-   --log-dir value               /path/to/log directory (default: "/tmp") [$NRELAY_LOG_DIR]
-   --procs value, -P value       attach cpu(s) (default: 8) [$NRELAY_PROCS]
-   --debug, -d                   debug mode [$NRELAY_DEBUG]
-   --verbose, -V                 verbose. more message [$NRELAY_VERBOSE]
-   --help, -h                    show help
-   --version, -v                 print the version
+   --debug, -d    debug mode [$NRELAY_DEBUG]
+   --verbose, -V  verbose. more message [$NRELAY_VERBOSE]
+   --help, -h     show help
+   --version, -v  print the version
+```
+
+### subcommand: relay
+
+```
+NAME:
+   nats-relay relay - run relay server
+
+USAGE:
+   nats-relay relay [command options] [arguments...]
+
+OPTIONS:
+   --yaml value, -c value  relay configuration yaml file path (default: "./relay.yaml") [$NRELAY_RELAY_YAML]
+   --pool-min value        goroutine pool min size (default: 100) [$NRELAY_POOL_MIN]
+   --pool-max value        goroutine pool min size (default: 1000) [$NRELAY_POOL_MAX]
 ```
 
 ## License

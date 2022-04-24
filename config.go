@@ -1,13 +1,5 @@
 package nrelay
 
-type Config struct {
-	DebugMode   bool
-	VerboseMode bool
-	Procs       int
-	LogDir      string
-	RelayYaml   string
-}
-
 //
 // relay.yaml
 // ----------
@@ -28,9 +20,8 @@ type RelayConfig struct {
 }
 
 type RelayClientConfig struct {
-	WorkerNum      int  `yaml:"worker"`
-	PrefixSize     int  `yaml:"prefix"`
-	UseLoadBalance bool `yaml:"loadbalance"`
+	WorkerNum  int `yaml:"worker"`
+	PrefixSize int `yaml:"prefix"`
 }
 
 func Topics(topics ...*topicNameOptionTuple) map[string]RelayClientConfig {
@@ -48,9 +39,8 @@ type topicNameOptionTuple struct {
 
 func defaultTopicOption() RelayClientConfig {
 	return RelayClientConfig{
-		WorkerNum:      1,
-		PrefixSize:     0,
-		UseLoadBalance: false,
+		WorkerNum:  1,
+		PrefixSize: 0,
 	}
 }
 
@@ -76,11 +66,5 @@ func WorkerNum(num int) topicOptionFunc {
 func PrefixSize(size int) topicOptionFunc {
 	return func(opt *RelayClientConfig) {
 		opt.PrefixSize = size
-	}
-}
-
-func UseLoadBalance(use bool) topicOptionFunc {
-	return func(opt *RelayClientConfig) {
-		opt.UseLoadBalance = use
 	}
 }
