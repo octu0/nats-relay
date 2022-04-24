@@ -1,122 +1,128 @@
 package nrelay
 
 import (
-	"io/ioutil"
+	"context"
 	"log"
-	"sync"
 
 	"github.com/nats-io/nats.go"
 	"github.com/octu0/chanque"
-	"github.com/octu0/nats-pool"
+	"github.com/pkg/errors"
 )
 
-type ServerConfig struct {
-	Logger   *log.Logger
-	Executor *chanque.Executor
+type Server interface {
+	Run(context.Context) error
 }
 
-func NewServerConfig(logger *log.Logger, executor *chanque.Executor) *ServerConfig {
-	return &ServerConfig{
-		Logger:   logger,
-		Executor: executor,
-	}
+type ServerOptFunc func(*serverOpt)
+
+type serverOpt struct {
+	relayConf RelayConfig
+	executor  *chanque.Executor
+	logger    *log.Logger
+	natsOpts  []nats.Option
 }
 
-func DefaultServerConfig() *ServerConfig {
-	return new(ServerConfig)
-}
-
-type Server struct {
-	mutex         *sync.Mutex
-	relayConf     RelayConfig
-	logger        *log.Logger
-	executor      *chanque.Executor
-	primaryPool   *pool.ConnPool
-	secondaryPool *pool.ConnPool
-	relayPool     *pool.ConnPool
-	subpubs       []*Subpub
-}
-
-func NewServer(svrConf *ServerConfig, relayConf RelayConfig, options ...nats.Option) *Server {
-	logger := svrConf.Logger
-	executor := svrConf.Executor
-
-	topicNum := 0
-	maxWorkerNum := 0
-	for _, conf := range relayConf.Topics {
-		topicNum += 1
-		maxWorkerNum += conf.WorkerNum
-	}
-	if logger == nil {
-		logger = log.New(ioutil.Discard, "", 0)
-	}
-	if executor == nil {
-		executor = chanque.NewExecutor(0, maxWorkerNum)
-	}
-
-	natsOpts := append(options, nats.NoEcho(), nats.Name(UA), nats.MaxReconnects(-1))
-
-	var primaryPool, secondaryPool, relayPool *pool.ConnPool
-	relayPool = pool.New(maxWorkerNum, relayConf.NatsUrl, natsOpts...)
-	primaryPool = pool.New(maxWorkerNum, relayConf.PrimaryUrl, natsOpts...)
-	if 0 < len(relayConf.SecondaryUrl) {
-		secondaryPool = pool.New(maxWorkerNum, relayConf.SecondaryUrl, natsOpts...)
-		topicNum = topicNum * 2
-	}
-
-	return &Server{
-		mutex:         new(sync.Mutex),
-		relayConf:     relayConf,
-		logger:        logger,
-		executor:      executor,
-		primaryPool:   primaryPool,
-		secondaryPool: secondaryPool,
-		relayPool:     relayPool,
-		subpubs:       make([]*Subpub, 0, topicNum),
+func ServerOptRelayConfig(conf RelayConfig) ServerOptFunc {
+	return func(opt *serverOpt) {
+		opt.relayConf = conf
 	}
 }
 
-func (r *Server) createSubpub(connType string, targetPool *pool.ConnPool) []*Subpub {
-	subs := make([]*Subpub, 0, len(r.relayConf.Topics))
-	for topicName, conf := range r.relayConf.Topics {
-		s := NewSubpub(connType, topicName, targetPool, r.relayPool, r.logger, r.executor, conf)
-		subs = append(subs, s)
+func ServerOptExecutor(executor *chanque.Executor) ServerOptFunc {
+	return func(opt *serverOpt) {
+		opt.executor = executor
 	}
-	return subs
 }
 
-func (r *Server) Start() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+func ServerOptLogger(logger *log.Logger) ServerOptFunc {
+	return func(opt *serverOpt) {
+		opt.logger = logger
+	}
+}
 
-	r.logger.Printf("info: relay server starting")
+func ServerOptNatsOptions(natsOpts ...nats.Option) ServerOptFunc {
+	return func(opt *serverOpt) {
+		opt.natsOpts = natsOpts
+	}
+}
 
-	r.subpubs = append(r.subpubs, r.createSubpub("primary", r.primaryPool)...)
-	if r.secondaryPool != nil {
-		r.subpubs = append(r.subpubs, r.createSubpub("secondary", r.secondaryPool)...)
+// check interface
+var (
+	_ (Server) = (*DefaultServer)(nil)
+)
+
+type DefaultServer struct {
+	opt *serverOpt
+}
+
+func (s *DefaultServer) Run(ctx context.Context) error {
+	sourceNatsUrls := make([]string, 0, 2)
+	sourceNatsUrls = append(sourceNatsUrls, s.opt.relayConf.PrimaryUrl)
+	if 0 < len(s.opt.relayConf.SecondaryUrl) {
+		sourceNatsUrls = append(sourceNatsUrls, s.opt.relayConf.SecondaryUrl)
 	}
 
-	for _, subpub := range r.subpubs {
-		if err := subpub.Subscribe(); err != nil {
-			return err
+	relays := make([]Relay, 0, len(s.opt.relayConf.Topics)*len(sourceNatsUrls))
+	for topic, conf := range s.opt.relayConf.Topics {
+		src := NewMultipleSource(sourceNatsUrls, s.opt.natsOpts, s.opt.logger)
+		dst := NewSingleDestination(s.opt.executor, s.opt.relayConf.NatsUrl, s.opt.natsOpts, s.opt.logger)
+		relay := NewMultipleSourceSingleDestinationRelay(topic, src, dst, conf.PrefixSize, conf.WorkerNum, s.opt.logger)
+		relays = append(relays, relay)
+	}
+
+	return runRelays(ctx, s.opt.executor, s.opt.logger, relays)
+}
+
+func NewDefaultServer(funcs ...ServerOptFunc) *DefaultServer {
+	opt := new(serverOpt)
+	for _, fn := range funcs {
+		fn(opt)
+	}
+	return &DefaultServer{opt}
+}
+
+func runRelays(ctx context.Context, executor *chanque.Executor, logger *log.Logger, relays []Relay) error {
+	logger.Printf("info: relay server stared")
+	sctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 0)
+	subexec := executor.SubExecutor()
+	for i, relay := range relays {
+		subexec.Submit(func(idx int, r Relay) chanque.Job {
+			return func() {
+				logger.Printf("debug: relay[%d] started", idx)
+				defer logger.Printf("debug: relay[%d] stoped", idx)
+
+				if err := r.Run(sctx); err != nil {
+					select {
+					case errCh <- errors.WithStack(err):
+					default:
+						// already shutdown
+					}
+				}
+			}
+		}(i, relay))
+	}
+
+	select {
+	case <-ctx.Done():
+		logger.Printf("info: relay server shutdown, context done")
+		cancel()
+
+		subexec.Wait()
+		close(errCh)
+		if err := <-errCh; err != nil {
+			return errors.WithStack(err)
 		}
+		return nil
+	case err := <-errCh:
+		logger.Printf("info: relay server shutdown, error happen")
+		cancel()
+
+		subexec.Wait()
+		close(errCh)
+		return errors.WithStack(err)
 	}
-
-	r.logger.Printf("info: relay server stared")
-	return nil
-}
-func (r *Server) Stop() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.logger.Printf("info: relay server stoping")
-
-	for _, subpub := range r.subpubs {
-		if err := subpub.Stop(); err != nil {
-			return err
-		}
-	}
-
-	r.logger.Printf("info: relay server stoped")
 	return nil
 }
