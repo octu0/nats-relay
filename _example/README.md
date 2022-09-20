@@ -2,7 +2,7 @@
 
 ![output](https://user-images.githubusercontent.com/42143893/50947167-4edf5600-14e0-11e9-8e75-3a29c12be1c7.gif)
 
-## run
+## run with relay yaml
 
 ```shell
 # pub origin 1
@@ -18,11 +18,12 @@ $ go run example/relay-master.go
 $ go run cmd/main.go --relay-yaml example/relay.yaml
 ```
 
-## without yaml
+## or run programmable
 
 ```go
 import(
-	...
+	"context"
+	"log"
   
 	"github.com/octu0/chanque"
 	"github.com/octu0/nats-relay"
