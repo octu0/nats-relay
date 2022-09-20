@@ -45,6 +45,7 @@ import (
 	"syscall"
 
 	"github.com/nats-io/nats.go"
+	"github.com/octu0/chanque"
 	"github.com/octu0/nats-relay"
 )
 
@@ -52,7 +53,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	serverConf := nrelay.DefaultServerConfig()
 	relayConf := nrelay.RelayConfig{
 		PrimaryUrl:   "nats://primary-natsd.local:4222",
 		SecondaryUrl: "nats://secondary-natsd.local:4222",
@@ -67,7 +67,7 @@ func main() {
 	executor := chanque.NewExecutor(10, 100)
 	logger := log.New(os.Stdout, "nrelay ", log.Ldate|log.Ltime|log.Lshortfile)
 
-	svr := nrelay.NewServer(
+	svr := nrelay.NewDefaultServer(
 		nrelay.ServerOptRelayConfig(relayConfig),
 		nrelay.ServerOptExecutor(executor),
 		nrelay.ServerOptLogger(logger),
