@@ -45,6 +45,7 @@ import (
 	"syscall"
 
 	"github.com/nats-io/nats.go"
+	"github.com/octu0/chanque"
 	"github.com/octu0/nats-relay"
 )
 
@@ -66,7 +67,7 @@ func main() {
 	executor := chanque.NewExecutor(10, 100)
 	logger := log.New(os.Stdout, "nrelay ", log.Ldate|log.Ltime|log.Lshortfile)
 
-	svr := nrelay.NewServer(
+	svr := nrelay.NewDefaultServer(
 		nrelay.ServerOptRelayConfig(relayConfig),
 		nrelay.ServerOptExecutor(executor),
 		nrelay.ServerOptLogger(logger),
@@ -77,7 +78,6 @@ func main() {
 		),
 	)
 	svr.Run(ctx)
-	<-ctx.Done()
 }
 ```
 
