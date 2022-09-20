@@ -52,7 +52,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	serverConf := nrelay.DefaultServerConfig()
 	relayConf := nrelay.RelayConfig{
 		PrimaryUrl:   "nats://primary-natsd.local:4222",
 		SecondaryUrl: "nats://secondary-natsd.local:4222",
@@ -78,6 +77,7 @@ func main() {
 		),
 	)
 	svr.Run(ctx)
+	<-ctx.Done()
 }
 ```
 
